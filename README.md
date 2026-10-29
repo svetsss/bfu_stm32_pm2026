@@ -1,44 +1,56 @@
-# Template for starting development for stm32f1x.
+# STM32F103C8 firmware
 
-Based on CMSIS, uses cmake+make bulding system.
+Minimal CMSIS project for the STM32F103C8 (Blue Pill), built with CMake and
+the Arm GNU Toolchain.
 
-## Requirements:
-* Arm Toolchain: arm-none-eabi-gcc
-* gdb-multiarch or arm-none-eabi-gdb debugger
-* cmake >= 3.0
-* make
-* build-essential
-* st-link utility for Linux
-* git (recommended for clonning project)
+## Requirements
 
-## Usage:
+- CMake 3.20 or newer
+- `arm-none-eabi-gcc`, `arm-none-eabi-objcopy` and `arm-none-eabi-size`
+- Make
 
-Clone project via git or http download (not recommended).
+On macOS with Homebrew:
 
-Open terminal, cd to root project directory.
+```sh
+brew install cmake
+brew install --cask gcc-arm-embedded
+```
 
-Run `cmake .` to generate Makefile, then run `make` or `make bin` or `make hex` depending on what format of firmware you want.
+## Command-line build
 
-Flash firmware with command `make flash`.
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build --target bin --parallel
+```
 
-To clean build artifacts run `make clean`. Also after modifying CMakeLists.txt you need to clean cmake cache via deleting CMakeCache.txt file (but NOT CMakeLists!)
+Build products:
 
-## Usage in VScode:
+- `build/stm32_template.elf` — executable with debug information
+- `build/stm32_template.bin` — binary firmware image for PICSimLab
+- `build/stm32_template.hex` — Intel HEX firmware image
+- `build/stm32_template.map` — linker map
 
-Required VS extensions:
-* CMake
-* Cmake Tools
-* C/C++ (IntelliSense, debugging, and code browsing)
-* Cortex-Debug
-* C/C++ Themes (optional)
+## VS Code
 
-Firstly, open working directory and setup toochain.
+The `.vscode` directory contains the recommended extensions, CMake settings,
+and the default build task. Open this project folder and press `Cmd+Shift+B`.
+The `STM32: Build firmware` task configures the project and creates all
+firmware formats listed above.
 
-Visit https://code.visualstudio.com/docs/cpp/cmake-linux for details.
+## PICSimLab
 
-Setup variant: Debug or Release.
+Select the **Blue Pill** board and the **stm32f103c8t6** microcontroller, then
+load `build/stm32_template.bin`.
 
-To build project run: "Terminal->Run Build task->Cmake: build"
-Project can be rebuild with "Cmake: clean rebuild"
+The firmware for practice 3 uses:
 
-Also you can build artifacts (bin/hex/elf) from CMake extension tab.
+- **PC13** — the onboard active-low LED;
+- **PB0** — an active-low push button with the MCU's internal pull-up enabled.
+
+Each debounced button press switches the LED between two clearly distinct
+blink rates: normal and five times as fast. Holding the button does not
+repeatedly change the rate; the next change happens only after releasing and
+pressing it again. Set the PICSimLab **IO (MHz)** field to **8** for a convenient
+visual blink rate.
+
+The ready-to-open PICSimLab workspace is `practice3_button_frequency.pzw`.

@@ -1,0 +1,19 @@
+{
+  "C_Cpp.default.compilerPath": "/opt/homebrew/bin/arm-none-eabi-gcc",
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+  "C_Cpp.default.defines": [
+    "STM32F103C8",
+    "STM32F10X_MD"
+  ],
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/cmsis",
+    "${workspaceFolder}/stm32"
+  ],
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "cmake.buildTask": true,
+  "cmake.configureSettings": {
+    "CMAKE_BUILD_TYPE": "Debug"
+  },
+  "cmake.configureOnOpen": true,
+  "cmake.generator": "Unix Makefiles"
+}

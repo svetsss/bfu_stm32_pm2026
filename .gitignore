@@ -1,0 +1,5 @@
+/build/
+/build-cmake/
+/picsimlab_runtime_backup*/
+.DS_Store
+*.zip
