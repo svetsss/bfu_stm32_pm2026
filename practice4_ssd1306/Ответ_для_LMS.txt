@@ -1,0 +1,160 @@
+Практика 4. SPI-дисплей SSD1306
+Старинская Светлана Романовна
+
+К ответу приложено рабочее пространство Starinskaya_lab4.pzw для Blue Pill / STM32F103C8T6. Дисплей SSD1306 подключён через SPI1 в четырёхпроводном режиме. Программа выводит шахматную доску с клетками 8×8 пикселей на экране 128×64.
+
+Подключение: CLK — PA5, DIN — PA7, /RES — PA2, DC — PA1, /CS — PA4. SPI1 работает в режиме 3 с делителем PCLK2/256. MISO не используется.
+
+Полный проект находится внутри архивного контейнера .pzw в каталоге picsimlab_workspace/code/stm32_pm2026/. Основа — шаблон курса и предоставленный пример Antonov_lab4; сведения об адаптации приведены в README.md.
+
+Основной исходный файл main.c:
+
+/*
+ * ПМК. Практика 4 — SPI-дисплей SSD1306.
+ * Старинская Светлана Романовна.
+ * Основа и изменения описаны в README.md.
+ */
+#include <stdint.h>
+#include "stm32f10x.h"
+
+// пины для дисплея (порт А)
+#define PIN_DC 1U    // PA1
+#define PIN_RES 2U   // PA2
+#define PIN_CS 4U    // PA4
+#define PIN_SCK 5U   // PA5 (CLK)
+#define PIN_MOSI 7U  // PA7 (DIN)
+
+void sys_delay(uint32_t ticks) {
+    for (volatile uint32_t i = 0; i < ticks; i++);
+}
+
+// инициализация SPI1 и нужных ножек
+void SPI1_Init(void) {
+    // тактирование порта А, альтернативных функций и самого SPI1
+    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN | RCC_APB2ENR_AFIOEN | RCC_APB2ENR_SPI1EN;
+
+    // сбрасываем биты для PA1, PA2, PA4, PA5, PA7
+    GPIOA->CRL &= ~(0xF0FF0FF0U);
+
+    // PA1, PA2, PA4 на обычный выход push-pull (0x3)
+    GPIOA->CRL |= (0x3U << 4) | (0x3U << 8) | (0x3U << 16);
+
+    // PA5 и PA7 как альтернативная функция push-pull для SPI (0xB)
+    GPIOA->CRL |= (0xBU << 20) | (0xBU << 28);
+
+    // по дефолту CS=1 и RES=1
+    GPIOA->ODR |= (1U << PIN_CS) | (1U << PIN_RES);
+
+    // настройка SPI1: мастер, делитель 256, программный CS и включаем модуль
+    SPI1->CR1 = SPI_CR1_CPOL | SPI_CR1_CPHA | SPI_CR1_MSTR | 
+                SPI_CR1_BR | SPI_CR1_SSM | SPI_CR1_SSI | SPI_CR1_SPE;
+}
+
+void SPI1_Write(uint8_t data) {
+    // ждем пока буфер передатчика освободится
+    while (!(SPI1->SR & SPI_SR_TXE));
+    
+    SPI1->DR = data;
+
+    // В полном дуплексе каждый переданный байт сопровождается приёмом.
+    // MISO дисплея не подключён, но регистр нужно читать, чтобы не было OVR.
+    while (!(SPI1->SR & SPI_SR_RXNE));
+    (void)SPI1->DR;
+    
+    // ждем конца передачи, чтобы не дернуть CS раньше времени
+    while (SPI1->SR & SPI_SR_BSY);
+}
+
+// чтение байта (для задания, сам экран ничего не возвращает)
+uint8_t SPI1_Read(void) {
+    while (!(SPI1->SR & SPI_SR_TXE));
+    SPI1->DR = 0; // запускаем обмен
+    while (!(SPI1->SR & SPI_SR_RXNE));
+    uint8_t data = (uint8_t)SPI1->DR;
+    while (SPI1->SR & SPI_SR_BSY);
+    return data;
+}
+
+// отправка команды (DC = 0)
+void oled_send_cmd(uint8_t cmd) {
+    GPIOA->ODR &= ~(1U << PIN_CS); // CS в 0
+    GPIOA->ODR &= ~(1U << PIN_DC); // DC в 0 (команда)
+    sys_delay(100);
+    SPI1_Write(cmd);
+    GPIOA->ODR |= (1U << PIN_CS); // CS обратно в 1
+}
+
+// отправка данных (DC = 1)
+void oled_send_data(uint8_t data) {
+    GPIOA->ODR &= ~(1U << PIN_CS); // CS = 0
+    GPIOA->ODR |= (1U << PIN_DC);  // DC = 1 (данные)
+    sys_delay(100);
+    SPI1_Write(data);
+    GPIOA->ODR |= (1U << PIN_CS);  // CS = 1
+}
+
+// начальная настройка экрана
+void oled_setup(void) {
+    // перезагрузка экрана через RES
+    GPIOA->ODR &= ~(1U << PIN_RES);
+    sys_delay(50000);
+    GPIOA->ODR |= (1U << PIN_RES);
+    sys_delay(50000);
+
+    oled_send_cmd(0xAE); // выключаем экран перед настройкой
+
+    // Явно задаём геометрию панели 128x64 и расположение строк.
+    oled_send_cmd(0xA8); // multiplex ratio
+    oled_send_cmd(0x3F); // 64 строки
+    oled_send_cmd(0xD3); // смещение изображения
+    oled_send_cmd(0x00);
+    oled_send_cmd(0x40); // первая строка изображения
+    oled_send_cmd(0xDA); // конфигурация COM для панели 128x64
+    oled_send_cmd(0x12);
+    oled_send_cmd(0xA4); // отображать содержимое RAM
+    oled_send_cmd(0xA6); // обычное изображение без инверсии
+
+    // горизонтальный режим адресации
+    oled_send_cmd(0x20);
+    oled_send_cmd(0x00);
+
+    // включаем питание (charge pump)
+    oled_send_cmd(0x8D);
+    oled_send_cmd(0x14);
+
+    // Экран включается после записи всего кадра в main().
+}
+
+// рисуем шахматную доску
+void draw_chessboard(void) {
+    // ставим курсор в начало (колонки 0-127, страницы 0-7)
+    oled_send_cmd(0x21);
+    oled_send_cmd(0x00);
+    oled_send_cmd(0x7F);
+
+    oled_send_cmd(0x22);
+    oled_send_cmd(0x00);
+    oled_send_cmd(0x07);
+
+    // проходимся по всем 8 страницам и 128 столбцам
+    for (uint8_t page = 0; page < 8; page++) {
+        for (uint8_t col = 0; col < 128; col++) {
+            // делим столбец на 8, чтобы клетки были 8х8 пикселей
+            if (((page + (col >> 3)) & 1U) == 0) {
+                oled_send_data(0xFF); // закрашиваем столбик
+            } else {
+                oled_send_data(0x00); // оставляем пустым
+            }
+        }
+    }
+}
+
+int main(void) {
+    SPI1_Init();
+    oled_setup();
+    draw_chessboard();
+    oled_send_cmd(0xAF); // включаем дисплей после записи изображения
+
+    while (1) {
+    }
+}
